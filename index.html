@@ -797,7 +797,7 @@ async function captureAndShareElement(containerId, buttonId) {
       try {
         await navigator.share({
           title: 'Báo cáo Ký túc xá',
-          text: 'Gửi báo cáo ứng dụng Quản sinh PowerPlus',
+          text: 'KTX Đà Nẵng báo cáo',
           files: [file]
         });
       } catch (err) {
@@ -911,7 +911,7 @@ async function shareWithCapacitor(file, blob) {
     const uriResult = await filesystem.getUri({ path: file.name, directory: 'CACHE' });
     await share.share({
       title: 'Báo cáo Ký túc xá',
-      text: 'Gửi báo cáo ứng dụng Quản sinh PowerPlus',
+      text: 'KTX Đà Nẵng báo cáo',
       files: [uriResult.uri],
       dialogTitle: 'Chia sẻ qua:'
     });
