@@ -564,10 +564,14 @@ function autoSyncDuty(){
   _dutySyncTimer = setTimeout(() => syncTrashToGoogleSheet(false), 1500);
 }
 
-function syncTrashToGoogleSheet(isManual = false){
+async function syncTrashToGoogleSheet(isManual = false){
   if(db.isSyncBlocked && !isManual) return;
   if(db.isSyncBlocked && isManual){
     showCustomAlert("Hiện tại hệ thống đang BẬT CHẶN đồng bộ với Google Sheet!", "⚠️ Chặn đồng bộ");
+    return;
+  }
+  if(!bookingConfigured()){
+    if(isManual) showCustomAlert('Chưa nhập khóa quản trị. Vào tab Book phòng → ⚙️ để nhập, rồi đồng bộ lại.', '⚠️ Chưa cài khóa');
     return;
   }
   let rowsList = [];
@@ -575,18 +579,19 @@ function syncTrashToGoogleSheet(isManual = false){
   for(let i = 0; i < 14; i++){
     let dStr = dateToStr(baseDate);
     let tr = getTrashDutyForDate(dStr);
-    rowsList.push([fmt(dStr), tr.sheetText || '']);
+    rowsList.push([dStr, tr.sheetText || '']);
     baseDate.setDate(baseDate.getDate() + 1);
   }
-  fetch(SCRIPT_URL, {
-    method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain' },
-    body: JSON.stringify({ action: 'syncTrash', key: BOOKING_ADMIN_KEY, rows: rowsList })
-  }).then(() => {
+  try{
+    const res = await bookingApi({ action: 'syncTrash', rows: JSON.stringify(rowsList) });
+    if(!res || !res.ok) throw new Error((res && (res.msg || res.message)) || 'Apps Script không phản hồi đúng');
     localStorage.setItem('lastTrashSyncDate', getRealTodayStr());
-    if(isManual) showCustomAlert("Đã xuất 14 ngày lịch Trực nhật (theo phòng) lên Google Sheet!", "✅ Thành công");
-  }).catch(err => {
-    if(isManual) showCustomAlert("Không thể gửi dữ liệu. Kiểm tra lại kết nối mạng!", "⚠️ Lỗi đồng bộ");
-  });
+    if(isManual){
+      showCustomAlert(`Đã ghi 14 ngày (ô A2:B15) vào sheet <b>${esc(res.sheet)}</b>.` + (res.fallback ? '<br><br>⚠️ Không thấy sheet tên <b>Schedules_Clean</b> nên app ghi vào sheet đầu tiên. Hãy đổi tên sheet đúng như vậy.' : ''), "✅ Thành công");
+    }
+  }catch(e){
+    if(isManual) showCustomAlert('Không đồng bộ được lên Google Sheet:<br><b>' + esc(e.message || e) + '</b><br><br>Hãy kiểm tra: đã dán Code.gs mới và Triển khai → Phiên bản mới chưa; khóa quản trị có khớp không.', "⚠️ Lỗi đồng bộ");
+  }
 }
 
 let trashViewMode = 'today';
@@ -713,19 +718,18 @@ function openFullReport(){
   let tempCards = document.querySelector('.cards').cloneNode(true);
   let trashNumEl = tempCards.querySelector('#trashToday');
   if(trashNumEl){
+    // Ảnh báo cáo gửi đi: danh tính trực nhật luôn là "Ẩn danh" (Trang chủ vẫn hiển thị đầy đủ)
     let trToday = getTrashDutyForDate(realToday);
     if(trToday.isOff){
-      let volText = trToday.volunteerName ? ` (Tự nguyện: ${esc(trToday.volunteerName)})` : '';
-      trashNumEl.innerHTML = `Hôm nay nghỉ trực nhật${volText}`;
-    } else if(trToday.isManual){
-      trashNumEl.innerHTML = `Phòng ${esc(trToday.room || '--')}<span style="font-size:11px;color:var(--muted);display:block;margin-top:2px">(học viên trực thay)</span>`;
+      trashNumEl.innerHTML = trToday.volunteerName ? 'Hôm nay nghỉ trực nhật (Tự nguyện: Ẩn danh)' : 'Hôm nay nghỉ trực nhật';
     } else {
-      trashNumEl.innerHTML = esc(trToday.who);
+      trashNumEl.innerHTML = 'Ẩn danh';
     }
   }
   let cardsHtml = tempCards.outerHTML;
   let alertsHtml = document.getElementById('alerts').cloneNode(true);
 
+  alertsHtml.querySelectorAll('[data-duty]').forEach(el => el.remove());
   let alertItems = alertsHtml.querySelectorAll('.alert-item');
   alertItems.forEach(item => {
     if(item.innerHTML.includes('sinh nhật')){
@@ -1297,7 +1301,7 @@ function renderHome(){
   let trTodayCheck = getTrashDutyForDate(realToday);
   if(trTodayCheck.needSetup){
     alertsObj.push({ priority: 2, html: `
-      <div class="alert-item" style="border-left-color:#f59e0b;background:#fffbeb">
+      <div class="alert-item" data-duty="1" style="border-left-color:#f59e0b;background:#fffbeb">
         <div class="alert-text">Chưa cài vòng phòng Trực nhật. Vào tab <b>Trực nhật</b> → ⚙️ để cài.</div>
         <span class="alert-tag" style="background:#fef3c7;color:#b45309">CẦN CÀI ĐẶT</span>
       </div>
@@ -1308,7 +1312,7 @@ function renderHome(){
     let trChk = k === 0 ? trTodayCheck : getTrashDutyForDate(dChk);
     if(!trChk.isOff && trChk.isManual && trChk.unavailableReason){
       alertsObj.push({ priority: 1, html: `
-        <div class="alert-item danger" style="border-left-color:var(--red);background:#fff5f5">
+        <div class="alert-item danger" data-duty="1" style="border-left-color:var(--red);background:#fff5f5">
           <div class="alert-text"><b>${esc(trChk.fullName)}</b> (trực nhật thay P.${esc(trChk.room||'--')}, ${k === 0 ? 'hôm nay' : fmt(dChk)}) không có mặt: ${esc(trChk.unavailableReason)}. Hãy sắp xếp người khác!</div>
           <span class="alert-tag" style="background:#fecaca;color:#991b1b">KHÔNG CÓ MẶT</span>
         </div>
@@ -2088,11 +2092,23 @@ function bookingConfigured(){
 }
 
 function publishNtfy(p){
-  try{ fetch('https://ntfy.sh/', { method: 'POST', body: JSON.stringify(p) }).catch(() => {}); }catch(e){}
+  return new Promise(function(resolve){
+    function viaImage(){
+      try{
+        var q = '?title=' + encodeURIComponent(p.title || '') + '&message=' + encodeURIComponent(p.message || '') + '&priority=' + (p.priority || 4) + '&tags=' + encodeURIComponent((p.tags || []).join(','));
+        var img = new Image();
+        img.onload = img.onerror = function(){ resolve(true); };
+        img.src = 'https://ntfy.sh/' + encodeURIComponent(p.topic) + '/publish' + q;
+      }catch(e){ resolve(false); }
+    }
+    try{
+      fetch('https://ntfy.sh/', { method: 'POST', mode: 'no-cors', body: JSON.stringify(p) }).then(function(){ resolve(true); }).catch(viaImage);
+    }catch(e){ viaImage(); }
+  });
 }
 
 function publishNtfyAwait(p){
-  return fetch('https://ntfy.sh/', { method: 'POST', body: JSON.stringify(p) }).then(r => r.ok).catch(() => false);
+  return publishNtfy(p);
 }
 
 async function testBookingSetup(){
@@ -2108,6 +2124,7 @@ async function testBookingSetup(){
       const res = await bookingApi({ action: 'ping', topic: NTFY_ADMIN_TOPIC });
       if(res && res.ok && res.version){
         add(true, 'Kết nối Apps Script OK, khóa quản trị đúng, Code.gs là bản mới.');
+        add(!!res.scheduleSheet, res.scheduleSheet ? 'Đã thấy sheet <b>Schedules_Clean</b>.' : 'Chưa thấy sheet tên <b>Schedules_Clean</b> trong Google Sheet (hãy đổi tên Trang tính 1).');
         add(res.topicOk, res.topicOk ? 'Tên kênh ntfy trong Code.gs khớp với app.' : '<b>Tên kênh ntfy trong Code.gs KHÁC tên kênh trong app.</b> Sửa dòng NTFY_ADMIN_TOPIC trong Code.gs cho giống, rồi Triển khai → Phiên bản mới.');
       } else if(res && /Sai key/.test(res.msg || '')){
         add(false, 'Khóa quản trị trong app khác ADMIN_KEY trong Code.gs.');
