@@ -539,11 +539,16 @@ function getTrashDutyForDate(targetDateStr){
   let room = getWeekRoom(targetDateStr);
   let rec = db.trash.find(x => x.date === targetDateStr);
   let status = rec ? (rec.status || '') : '';
+  if(rec && rec.isManual && rec.altRoom){
+    return { who: 'Phòng ' + rec.altRoom + (room ? ' (thay P.' + room + ')' : ''), fullName: '', room: rec.altRoom, scheduledRoom: room,
+      status: status, isManual: true, isRoomSwap: true, unavailableReason: '',
+      sheetText: 'Phòng ' + rec.altRoom };
+  }
   if(rec && rec.isManual && rec.who){
     let reason = getStudentUnavailableReason(rec.who, targetDateStr);
     return { who: getTrashDisplayName(rec.who) + (room ? ' (thay P.' + room + ')' : ''), fullName: rec.who, room: room,
       status: status, isManual: true, unavailableReason: reason,
-      sheetText: rec.who + (room ? ' (phạt, thay P.' + room + ')' : '') };
+      sheetText: rec.who };
   }
   if(!room) return { who: 'Chưa cài vòng phòng', fullName: '', room: '', status: '', isManual: false, needSetup: true, sheetText: '' };
   return { who: 'Phòng ' + room, fullName: '', room: room, status: status, isManual: false, sheetText: 'Phòng ' + room };
@@ -1694,7 +1699,7 @@ function renderDutyItem(dateStr, tr, realToday){
   let bad = tr.isManual && tr.unavailableReason;
   let itemBgStyle = bad ? 'background:#fff1f2; border:1px solid #fecdd3;' : '';
   let reasonBox = bad ? `<div style="margin-top:6px;padding:6px 8px;border-radius:10px;background:#fee2e2;color:#b91c1c;font-size:12px;font-weight:800;line-height:1.4">🚨 Học viên không có mặt ngày này (${esc(tr.unavailableReason)}). Hãy sắp xếp người khác!</div>` : '';
-  let weekNote = tr.isManual ? `<div style="font-size:12px;color:var(--muted);margin-top:2px">Trực thay phòng ${esc(tr.room || '--')} (thủ công)</div>` : '';
+  let weekNote = tr.isManual ? (tr.isRoomSwap ? `<div style="font-size:12px;color:var(--muted);margin-top:2px">Đổi sang phòng ${esc(tr.room)} trực thay phòng ${esc(tr.scheduledRoom || '--')} (thủ công)</div>` : `<div style="font-size:12px;color:var(--muted);margin-top:2px">Trực thay phòng ${esc(tr.room || '--')} (thủ công)</div>`) : '';
   let btnResetHtml = (tr.isManual && !isReadOnlyPast) ?
     `<button class="tiny danger" onclick="resetTrashForDate('${dateStr}')" style="background:#fee2e2;color:#dc2626;border:1px solid #fca5a5;padding:4px 8px;" title="Quay về lịch theo phòng">🔄 Reset</button>` : '';
   let btnStatusHtml = tr.needSetup ? '' : (isReadOnlyPast ?
@@ -1858,7 +1863,7 @@ function toggleTrashDone(dateStr){
 function resetTrashForDate(dateStr){
   let tr = db.trash.find(x => x.date === dateStr);
   if(tr){
-    if(tr.status){ tr.isManual = false; tr.who = ''; }
+    if(tr.status){ tr.isManual = false; tr.who = ''; tr.altRoom = ''; }
     else db.trash = db.trash.filter(x => x.date !== dateStr);
   }
   save(); renderTrash(); renderHome(); autoSyncDuty();
@@ -1867,17 +1872,33 @@ function resetTrashForDate(dateStr){
 function openTrashEditForDate(dateStr){
   let tr = getTrashDutyForDate(dateStr);
   let room = getWeekRoom(dateStr);
-  let cur = tr.isManual ? tr.fullName : '';
+  let isRoomMode = !!tr.isRoomSwap;
+  let cur = (tr.isManual && !tr.isRoomSwap) ? tr.fullName : '';
   let options = '<option value="">— Chọn học viên trực thay —</option>' +
     getSortedStudents(getActiveStudents(dateStr)).map(s => {
       let r = getStudentUnavailableReason(s.name, dateStr);
       return `<option value="${escAttr(s.name)}" ${s.name === cur ? 'selected' : ''}>${esc(s.name)} (P.${esc(s.room||'--')})${r ? ' — ' + esc(r) : ''}</option>`;
     }).join('');
+  let roomSet = new Set([...(db.dutyRooms || []), ...getActiveStudents(dateStr).map(s => (s.room || '').trim()).filter(Boolean)]);
+  let roomList = [...roomSet].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  let curRoom = tr.isRoomSwap ? tr.room : '';
+  let roomOptions = '<option value="">— Chọn phòng trực thay —</option>' +
+    roomList.map(r => `<option value="${escAttr(r)}" ${r === curRoom ? 'selected' : ''}>Phòng ${esc(r)}${r === room ? ' (phòng theo lịch)' : ''}</option>`).join('');
   openModal(`
     <h2 style="margin-top:0">✏️ Trực nhật thay (${fmt(dateStr)})</h2>
-    <div style="font-size:13px;color:var(--muted);margin-bottom:6px">Theo lịch tuần này: <b>${room ? 'Phòng ' + esc(room) : 'chưa cài'}</b>. Chọn học viên bị phạt trực thay phòng trong ngày này.</div>
-    <div class="section">Học viên trực</div>
-    <select id="trPerson">${options}</select>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:8px">Theo lịch tuần này: <b>${room ? 'Phòng ' + esc(room) : 'chưa cài'}</b>. Chọn người hoặc phòng trực thay trong ngày này.</div>
+    <div class="row" style="margin-bottom:8px">
+      <label style="display:flex;align-items:center;gap:6px;font-weight:700"><input type="radio" name="trMode" value="student" style="width:auto" ${isRoomMode ? '' : 'checked'} onchange="toggleTrashMode()"> 👤 Học viên</label>
+      <label style="display:flex;align-items:center;gap:6px;font-weight:700"><input type="radio" name="trMode" value="room" style="width:auto" ${isRoomMode ? 'checked' : ''} onchange="toggleTrashMode()"> 🏠 Phòng</label>
+    </div>
+    <div id="trStudentBox" style="display:${isRoomMode ? 'none' : 'block'}">
+      <div class="section">Học viên trực</div>
+      <select id="trPerson">${options}</select>
+    </div>
+    <div id="trRoomBox" style="display:${isRoomMode ? 'block' : 'none'}">
+      <div class="section">Phòng trực</div>
+      <select id="trRoomPick">${roomOptions}</select>
+    </div>
     <div class="actions" style="margin-top:16px">
       <button onclick="closeModal()">Hủy</button>
       <button class="primary" onclick="saveTrashManual('${dateStr}')">Lưu phân công</button>
@@ -1885,16 +1906,32 @@ function openTrashEditForDate(dateStr){
   `);
 }
 
+function toggleTrashMode(){
+  const m = document.querySelector('input[name="trMode"]:checked');
+  const isRoom = m && m.value === 'room';
+  document.getElementById('trStudentBox').style.display = isRoom ? 'none' : 'block';
+  document.getElementById('trRoomBox').style.display = isRoom ? 'block' : 'none';
+}
+
 function saveTrashManual(dateStr){
-  let who = val('trPerson');
-  if(!who) return showCustomAlert('Vui lòng chọn một học viên!');
-  let reason = getStudentUnavailableReason(who, dateStr);
-  if(reason){
-    return showCustomAlert(`Học viên <b>${esc(who)}</b> không có mặt ngày ${fmt(dateStr)} (${esc(reason)}).<br>Bạn hãy sắp xếp học viên khác nhé!`, '🚨 Học viên không có mặt');
-  }
+  const m = document.querySelector('input[name="trMode"]:checked');
+  const isRoom = m && m.value === 'room';
   let tr = db.trash.find(x => x.date === dateStr);
-  if(tr){ tr.who = who; tr.isManual = true; }
-  else db.trash.push({ date: dateStr, who: who, status: '', isManual: true });
+  if(isRoom){
+    let r = val('trRoomPick');
+    if(!r) return showCustomAlert('Vui lòng chọn một phòng!');
+    if(tr){ tr.who = ''; tr.altRoom = r; tr.isManual = true; }
+    else db.trash.push({ date: dateStr, who: '', altRoom: r, status: '', isManual: true });
+  } else {
+    let who = val('trPerson');
+    if(!who) return showCustomAlert('Vui lòng chọn một học viên!');
+    let reason = getStudentUnavailableReason(who, dateStr);
+    if(reason){
+      return showCustomAlert(`Học viên <b>${esc(who)}</b> không có mặt ngày ${fmt(dateStr)} (${esc(reason)}).<br>Bạn hãy sắp xếp học viên khác nhé!`, '🚨 Học viên không có mặt');
+    }
+    if(tr){ tr.who = who; tr.altRoom = ''; tr.isManual = true; }
+    else db.trash.push({ date: dateStr, who: who, altRoom: '', status: '', isManual: true });
+  }
   save(); closeModal(); renderTrash(); renderHome(); autoSyncDuty();
 }
 
@@ -2124,6 +2161,11 @@ async function testBookingSetup(){
       const res = await bookingApi({ action: 'ping', topic: NTFY_ADMIN_TOPIC });
       if(res && res.ok && res.version){
         add(true, 'Kết nối Apps Script OK, khóa quản trị đúng, Code.gs là bản mới.');
+        if(res.sheetError){
+          add(false, '<b>Apps Script không mở được Google Sheet:</b> ' + esc(res.sheetError) + '<br>Hãy mở Apps Script từ chính Sheet (Tiện ích mở rộng → Apps Script) hoặc sửa SHEET_ID trong Code.gs cho đúng ID của Sheet.');
+        } else {
+          add(true, 'Đang nối với Google Sheet: <b>' + esc(res.sheetName) + '</b><br><span style="font-size:12px;color:var(--muted)">Các tab: ' + esc((res.tabs || []).join(', ')) + '</span>');
+        }
         add(!!res.scheduleSheet, res.scheduleSheet ? 'Đã thấy sheet <b>Schedules_Clean</b>.' : 'Chưa thấy sheet tên <b>Schedules_Clean</b> trong Google Sheet (hãy đổi tên Trang tính 1).');
         add(res.topicOk, res.topicOk ? 'Tên kênh ntfy trong Code.gs khớp với app.' : '<b>Tên kênh ntfy trong Code.gs KHÁC tên kênh trong app.</b> Sửa dòng NTFY_ADMIN_TOPIC trong Code.gs cho giống, rồi Triển khai → Phiên bản mới.');
       } else if(res && /Sai key/.test(res.msg || '')){
