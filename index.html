@@ -2091,6 +2091,42 @@ function publishNtfy(p){
   try{ fetch('https://ntfy.sh/', { method: 'POST', body: JSON.stringify(p) }).catch(() => {}); }catch(e){}
 }
 
+function publishNtfyAwait(p){
+  return fetch('https://ntfy.sh/', { method: 'POST', body: JSON.stringify(p) }).then(r => r.ok).catch(() => false);
+}
+
+async function testBookingSetup(){
+  const k = val('bkKey'), t = val('bkTopic');
+  if(k) BOOKING_ADMIN_KEY = k;
+  if(t) NTFY_ADMIN_TOPIC = t;
+  const lines = [];
+  const add = (ok, txt) => lines.push(`<div style="margin:8px 0;line-height:1.5">${ok ? '✅' : '❌'} ${txt}</div>`);
+  if(!bookingConfigured()){
+    add(false, 'Chưa nhập khóa quản trị.');
+  } else {
+    try{
+      const res = await bookingApi({ action: 'ping', topic: NTFY_ADMIN_TOPIC });
+      if(res && res.ok && res.version){
+        add(true, 'Kết nối Apps Script OK, khóa quản trị đúng, Code.gs là bản mới.');
+        add(res.topicOk, res.topicOk ? 'Tên kênh ntfy trong Code.gs khớp với app.' : '<b>Tên kênh ntfy trong Code.gs KHÁC tên kênh trong app.</b> Sửa dòng NTFY_ADMIN_TOPIC trong Code.gs cho giống, rồi Triển khai → Phiên bản mới.');
+      } else if(res && /Sai key/.test(res.msg || '')){
+        add(false, 'Khóa quản trị trong app khác ADMIN_KEY trong Code.gs.');
+      } else {
+        add(false, 'Code.gs trên Apps Script chưa phải bản mới, hoặc chưa Triển khai → Phiên bản mới.');
+      }
+    }catch(e){
+      add(false, 'Không gọi được Apps Script (kiểm tra mạng hoặc SCRIPT_URL).');
+    }
+  }
+  const ok = await publishNtfyAwait({ topic: NTFY_ADMIN_TOPIC, title: '🔔 Thử thông báo Quản sinh', message: 'Nếu điện thoại reo là phần gửi thông báo đã hoạt động.', priority: 5, tags: ['white_check_mark'] });
+  add(ok, ok ? 'Đã gửi thông báo thử lên ntfy. Hãy xem điện thoại: app ntfy phải hiện tin mới và reo.' : 'Không gửi được lên ntfy (kiểm tra mạng).');
+  openModal(`
+    <h2 style="margin-top:0">🧪 Kết quả kiểm tra</h2>
+    <div style="font-size:14px">${lines.join('')}</div>
+    <div class="actions"><button class="primary" onclick="closeModal()">Đóng</button></div>
+  `);
+}
+
 async function bookingApi(params){
   const u = new URL(SCRIPT_URL);
   u.searchParams.set('key', BOOKING_ADMIN_KEY);
@@ -2233,6 +2269,7 @@ function openBookingConfig(){
     <div class="section">🔗 Link form cho học viên</div>
     <input id="bkLink" value="${escAttr(SCRIPT_URL)}" readonly onclick="this.select()">
     <div class="actions" style="margin-top:8px"><button onclick="copyBookingLink()">📋 Copy link</button></div>
+    <div class="actions" style="margin-top:10px"><button onclick="testBookingSetup()">🧪 Kiểm tra & gửi thử thông báo</button></div>
     <div style="font-size:12.5px;line-height:1.6;color:var(--muted);margin-top:10px">Cài app <b>ntfy</b> trên điện thoại → Subscribe đúng tên kênh ở trên.</div>
     <div class="actions" style="margin-top:14px">
       <button onclick="closeModal()">Hủy</button>
