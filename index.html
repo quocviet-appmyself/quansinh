@@ -120,7 +120,7 @@ hr{border:0;border-top:1px solid #f0e1e7;margin:14px 0}
   </div>
   <div class="sub" style="margin-top:8px;line-height:1.6">
     🔐 WiFi: <b id="hdrWifi">Kinhchaoquykhach</b> &nbsp; • &nbsp; ☎️ Phòng đào tạo: <b id="hdrDaotao">090 112 8512</b><br>
-    📍 <span id="hdrAddr">209 Đông Ngạc, P. Đông Ngạc, Tp. Hà Nội</span>
+    📍 <span id="hdrAddr">209 Đông Ngạc, P. Đông Ngạc, Tp. Đà Nẵng</span>
   </div>
 </header>
 
@@ -1700,12 +1700,12 @@ function renderDutyItem(dateStr, tr, realToday){
   let itemBgStyle = bad ? 'background:#fff1f2; border:1px solid #fecdd3;' : '';
   let reasonBox = bad ? `<div style="margin-top:6px;padding:6px 8px;border-radius:10px;background:#fee2e2;color:#b91c1c;font-size:12px;font-weight:800;line-height:1.4">🚨 Học viên không có mặt ngày này (${esc(tr.unavailableReason)}). Hãy sắp xếp người khác!</div>` : '';
   let weekNote = tr.isManual ? (tr.isRoomSwap ? `<div style="font-size:12px;color:var(--muted);margin-top:2px">Đổi sang phòng ${esc(tr.room)} trực thay phòng ${esc(tr.scheduledRoom || '--')} (thủ công)</div>` : `<div style="font-size:12px;color:var(--muted);margin-top:2px">Trực thay phòng ${esc(tr.room || '--')} (thủ công)</div>`) : '';
-  let btnResetHtml = (tr.isManual && !isReadOnlyPast) ?
+  let btnResetHtml = (isTrashVolunteerEditMode && tr.isManual && !isReadOnlyPast) ?
     `<button class="tiny danger" onclick="resetTrashForDate('${dateStr}')" style="background:#fee2e2;color:#dc2626;border:1px solid #fca5a5;padding:4px 8px;" title="Quay về lịch theo phòng">🔄 Reset</button>` : '';
   let btnStatusHtml = tr.needSetup ? '' : (isReadOnlyPast ?
     `<span class="pill ${tr.status==='ok'?'ok':'off'}" style="opacity:0.8">${tr.status==='ok'?'✓ Đã xong':'Chưa xong'}</span>` :
     `<button class="tiny ${tr.status==='ok'?'ok':'off'}" onclick="toggleTrashDone('${dateStr}')">${tr.status==='ok'?'✓ Xong':'Chưa xong'}</button>`);
-  let btnEditHtml = (isReadOnlyPast || tr.needSetup) ? '' : `<button class="tiny" onclick="openTrashEditForDate('${dateStr}')" title="Chọn học viên trực thay (phạt)">✏️</button>`;
+  let btnEditHtml = (!isTrashVolunteerEditMode || isReadOnlyPast || tr.needSetup) ? '' : `<button class="tiny" onclick="openTrashEditForDate('${dateStr}')" title="Chọn học viên trực thay (phạt)">✏️</button>`;
   return `<div class="item" style="${itemBgStyle}">
     <div class="avatar">🧹</div>
     <div class="info">
@@ -1888,8 +1888,8 @@ function openTrashEditForDate(dateStr){
     <h2 style="margin-top:0">✏️ Trực nhật thay (${fmt(dateStr)})</h2>
     <div style="font-size:13px;color:var(--muted);margin-bottom:8px">Theo lịch tuần này: <b>${room ? 'Phòng ' + esc(room) : 'chưa cài'}</b>. Chọn người hoặc phòng trực thay trong ngày này.</div>
     <div class="row" style="margin-bottom:8px">
-      <label style="display:flex;align-items:center;gap:6px;font-weight:700"><input type="radio" name="trMode" value="student" style="width:auto" ${isRoomMode ? '' : 'checked'} onchange="toggleTrashMode()"> 👤 Học viên</label>
-      <label style="display:flex;align-items:center;gap:6px;font-weight:700"><input type="radio" name="trMode" value="room" style="width:auto" ${isRoomMode ? 'checked' : ''} onchange="toggleTrashMode()"> 🏠 Phòng</label>
+      <label style="display:flex;align-items:center;gap:6px;font-weight:700"><input type="radio" name="trMode" value="student" style="width:auto" ${isRoomMode ? '' : 'checked'} onchange="toggleTrashSwapMode()"> 👤 Học viên</label>
+      <label style="display:flex;align-items:center;gap:6px;font-weight:700"><input type="radio" name="trMode" value="room" style="width:auto" ${isRoomMode ? 'checked' : ''} onchange="toggleTrashSwapMode()"> 🏠 Phòng</label>
     </div>
     <div id="trStudentBox" style="display:${isRoomMode ? 'none' : 'block'}">
       <div class="section">Học viên trực</div>
@@ -1906,7 +1906,7 @@ function openTrashEditForDate(dateStr){
   `);
 }
 
-function toggleTrashMode(){
+function toggleTrashSwapMode(){
   const m = document.querySelector('input[name="trMode"]:checked');
   const isRoom = m && m.value === 'room';
   document.getElementById('trStudentBox').style.display = isRoom ? 'none' : 'block';
