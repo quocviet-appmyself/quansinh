@@ -120,7 +120,7 @@ hr{border:0;border-top:1px solid #f0e1e7;margin:14px 0}
   </div>
   <div class="sub" style="margin-top:8px;line-height:1.6">
     🔐 WiFi: <b id="hdrWifi">Kinhchaoquykhach</b> &nbsp; • &nbsp; ☎️ Phòng đào tạo: <b id="hdrDaotao">090 112 8512</b><br>
-    📍 <span id="hdrAddr">209 Đông Ngạc, P. Đông Ngạc, Tp. Đà Nẵng</span>
+    📍 <span id="hdrAddr">209 Đông Ngạc, P. Đông Ngạc, Tp. Hà Nội</span>
   </div>
 </header>
 
@@ -2030,17 +2030,59 @@ function renderAbsence(){
   }).join('');
 }
 
+let absPickList = [];
+
+function absFilter(openOnly){
+  const inp = document.getElementById('absSearch');
+  const box = document.getElementById('absSuggest');
+  if(!inp || !box) return;
+  if(!openOnly){ document.getElementById('absName').value = ''; } // gõ lại thì phải chọn lại
+  const q = inp.value.trim();
+  const list = absPickList.filter(s => studentSearchMatch(s, q)).slice(0, 30);
+  if(!list.length){
+    box.innerHTML = '<div style="padding:10px 12px;color:var(--muted);font-size:13px">Không tìm thấy học viên phù hợp</div>';
+  } else {
+    box.innerHTML = list.map(s => `<div onmousedown="event.preventDefault()" onclick="absPick(${absPickList.indexOf(s)})" style="padding:10px 12px;border-bottom:1px solid #f7e6ed;cursor:pointer;font-size:14px"><b>${esc(s.name)}</b> <span style="color:var(--muted)">· P.${esc(s.room || '--')}</span></div>`).join('');
+  }
+  box.style.display = 'block';
+}
+
+function absPick(i){
+  const s = absPickList[i];
+  if(!s) return;
+  document.getElementById('absName').value = s.name;
+  document.getElementById('absSearch').value = `${s.name} (P.${s.room || '--'})`;
+  document.getElementById('absSuggest').style.display = 'none';
+}
+
+function absKey(e){
+  if(e.key === 'Enter'){
+    e.preventDefault();
+    const q = document.getElementById('absSearch').value.trim();
+    const first = absPickList.filter(s => studentSearchMatch(s, q))[0];
+    if(first) absPick(absPickList.indexOf(first));
+  } else if(e.key === 'Escape'){
+    document.getElementById('absSuggest').style.display = 'none';
+  }
+}
+
 function openAbsence(index){
   let isEdit = (index != null && index >= 0);
   let x = isEdit ? db.absences[index] : { name: '', from: getRealTodayStr(), to: getTomorrowStr(getRealTodayStr()), reason: '' };
   
-  let activeStudents = getActiveStudents();
-  let optionsHtml = activeStudents.map(s => `<option value="${escAttr(s.name)}" ${s.name === x.name ? 'selected' : ''}>${esc(s.name)} (P.${esc(s.room||'--')})</option>`).join('');
+  absPickList = getSortedStudents(getActiveStudents());
+  let selStu = absPickList.find(s => s.name === x.name);
+  let selLabel = selStu ? `${selStu.name} (P.${selStu.room || '--'})` : '';
 
   openModal(`
     <h2 style="margin-top:0">${isEdit ? '✏️ Chỉnh sửa đơn xin vắng' : '🏖️ Tạo đơn xin vắng mới'}</h2>
-    <div class="section">Chọn Học viên</div>
-    <select id="absName">${optionsHtml}</select>
+    <div class="section">Học viên (gõ tên, phòng hoặc SĐT để tìm)</div>
+    <div style="position:relative">
+      <input id="absSearch" placeholder="🔍 Gõ để tìm học viên..." autocomplete="off" value="${escAttr(selLabel)}"
+        oninput="absFilter()" onfocus="absFilter(true)" onkeydown="absKey(event)">
+      <input type="hidden" id="absName" value="${escAttr(selStu ? selStu.name : '')}">
+      <div id="absSuggest" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:50;max-height:220px;overflow-y:auto;background:white;border:1.5px solid #f0dce4;border-radius:12px;box-shadow:0 8px 20px rgba(0,0,0,.12);margin-top:4px"></div>
+    </div>
     <div class="row">
       <div><div class="section">Từ ngày</div><input type="date" id="absFrom" value="${x.from||''}"></div>
       <div><div class="section">Đến ngày (ngày trở lại)</div><input type="date" id="absTo" value="${x.to||''}"></div>
@@ -2060,7 +2102,7 @@ function saveAbsence(index){
   let to = val('absTo');
   let reason = val('absReason');
 
-  if(!sName) return showCustomAlert('Vui lòng chọn học viên xin vắng!');
+  if(!sName) return showCustomAlert('Vui lòng gõ tên và chọn một học viên trong danh sách gợi ý!');
   if(!from || !to) return showCustomAlert('Vui lòng nhập ngày từ và ngày đến!');
   if(from > to) return showCustomAlert('Ngày bắt đầu không thể lớn hơn ngày trở lại!');
 
