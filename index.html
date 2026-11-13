@@ -103,6 +103,12 @@ input:focus,select:focus{border-color:var(--pink);box-shadow:0 0 0 3px #ff8fb322
 
 .actions{display:flex;gap:10px;margin-top:16px}.actions button{flex:1;padding:12px;font-size:14px;border-radius:14px}
 hr{border:0;border-top:1px solid #f0e1e7;margin:14px 0}
+
+.clr-wrap{position:relative}
+.clr-wrap input{padding-right:40px}
+.clr-btn{display:none;position:absolute;right:8px;top:50%;transform:translateY(-50%);width:26px;height:26px;border:0;border-radius:50%;background:#ead9e0;color:#7a5a68;font-size:13px;font-weight:800;line-height:1;align-items:center;justify-content:center;cursor:pointer;padding:0;box-shadow:none}
+.clr-wrap input:not(:placeholder-shown) + .clr-btn{display:flex}
+.clr-btn:active{background:#d9bfca}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 </head>
@@ -198,7 +204,7 @@ hr{border:0;border-top:1px solid #f0e1e7;margin:14px 0}
 
 <section id="studentsScreen" class="screen">
   <div class="section">👩‍🎓 Danh sách Học viên</div>
-  <input id="search" placeholder="🔍 Tìm tên, phòng, SĐT (HV/phụ huynh), ghi chú..." oninput="renderStudents()">
+  <div class="clr-wrap"><input id="search" placeholder="🔍 Tìm tên, phòng, SĐT (HV/phụ huynh), ghi chú..." oninput="renderStudents()"><button type="button" class="clr-btn" onmousedown="event.preventDefault()" onclick="clearStudentSearch()" aria-label="Xóa nội dung tìm kiếm">✕</button></div>
   <div class="actions" style="display:flex;gap:8px"><button class="primary" onclick="openStudentEdit()" style="flex:1">＋ Thêm học viên mới</button><button onclick="exportStudentsExcel()" style="flex:none;background:#e8f8f0;color:#277d5a;border:1px solid #b7ebc6">📊 Xuất Excel</button></div>
   <div id="studentList" class="list" style="margin-top:10px"></div>
 </section>
@@ -2204,9 +2210,9 @@ function pickerHtml(id, list, selectedName, extraFn, placeholder){
   _pickers[id] = { list: list, extraFn: extraFn || null };
   const sel = selectedName ? list.find(x => x.name === selectedName) : null;
   const label = sel ? `${sel.name} (P.${sel.room || '--'})` : '';
-  return `<div class="pk-wrap" style="position:relative">
+  return `<div class="pk-wrap clr-wrap" style="position:relative">
     <input id="${id}Search" placeholder="${escAttr(placeholder || '🔍 Gõ tên, phòng hoặc SĐT để tìm...')}" autocomplete="off" value="${escAttr(label)}"
-      oninput="pkFilter('${id}')" onfocus="pkFilter('${id}', true)" onkeydown="pkKey(event, '${id}')">
+      oninput="pkFilter('${id}')" onfocus="pkFilter('${id}', true)" onkeydown="pkKey(event, '${id}')"><button type="button" class="clr-btn" onmousedown="event.preventDefault()" onclick="pkClear('${id}')" aria-label="Xóa nội dung">✕</button>
     <input type="hidden" id="${id}" value="${escAttr(sel ? sel.name : '')}">
     <div id="${id}Suggest" class="pk-suggest" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:50;max-height:220px;overflow-y:auto;background:white;border:1.5px solid #f0dce4;border-radius:12px;box-shadow:0 8px 20px rgba(0,0,0,.12);margin-top:4px"></div>
   </div>`;
@@ -2238,6 +2244,24 @@ function pkPick(id, i){
   document.getElementById(id).value = x.name;
   document.getElementById(id + 'Search').value = `${x.name} (P.${x.room || '--'})`;
   document.getElementById(id + 'Suggest').style.display = 'none';
+}
+
+function clearStudentSearch(){
+  const el = document.getElementById('search');
+  if(!el) return;
+  el.value = '';
+  renderStudents();
+  el.focus();
+}
+
+function pkClear(id){
+  const inp = document.getElementById(id + 'Search');
+  const hid = document.getElementById(id);
+  if(!inp || !hid) return;
+  inp.value = '';
+  hid.value = '';
+  inp.focus();
+  pkFilter(id, true);
 }
 
 function pkKey(e, id){
